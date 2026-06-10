@@ -179,44 +179,53 @@ def _extended(meta, ref):
 
 
 def get_quote(symbol):
-    """返回当前价、今日参考收盘、涨跌幅、52周区间，以及盘前/盘后报价（若有）。
+    """返回最新价（含盘前/盘后）、上一交易日收盘、涨跌幅、52周区间、市场时段。
 
-    价格要新鲜，缓存 8 秒（低于轮询间隔，保证每次轮询都拉到最新价；
-    同时挡掉手抖的连点）。"""
-    res = _fetch_chart(symbol, rng="1mo", interval="1d", prepost=True, ttl=8)
-    meta = res.get("meta", {})
-    pairs = _clean_closes(res)
-    if not pairs:
+    现价取自【分钟级 K 线的最后一根】——盘前/盘后也能拿到（缓存 8 秒，保证轮询拉到最新）。
+    上一收盘 / 52周 / 名称取自日线（缓存 10 分钟，盘中基本不变，省请求）。
+    （Yahoo 免费接口的 meta.preMarketPrice/regularMarketPrice 常滞后或为空，不可靠，故改用分钟线。）"""
+    daily = _fetch_chart(symbol, rng="1mo", interval="1d", prepost=False, ttl=600)
+    dmeta = daily.get("meta", {})
+    dpairs = _clean_closes(daily)
+    if not dpairs:
         raise ValueError(f"{symbol} 无收盘数据")
 
-    current = meta.get("regularMarketPrice") or pairs[-1][1]
+    # 现价：分钟级最后一根（含盘前盘后）；失败则回退到 meta / 日线
+    live_t = dmeta.get("regularMarketTime")
+    current = dmeta.get("regularMarketPrice")
+    try:
+        mins = _fetch_chart(symbol, rng="1d", interval="1m", prepost=True, ttl=8)
+        mpairs = _clean_closes(mins)
+        if mpairs:
+            live_t, current = mpairs[-1][0], mpairs[-1][1]
+    except Exception:
+        pass
+    if current is None:
+        current = dpairs[-1][1]
 
-    # 推算「上一交易日收盘」：若最后一根 K 线是今天，则取前一根
+    # 上一交易日收盘：用日线序列推算（若最后一根是今天则取前一根）
     today = datetime.date.today()
-    last_t, last_c = pairs[-1]
+    last_t, last_c = dpairs[-1]
     last_date = datetime.datetime.fromtimestamp(last_t).date()
-    if last_date == today and len(pairs) >= 2:
-        prev_close = pairs[-2][1]
-    else:
-        prev_close = last_c
+    prev_close = dpairs[-2][1] if (last_date == today and len(dpairs) >= 2) else last_c
 
+    state = _STATE_LABEL.get(dmeta.get("marketState")) or us_market_session()[0]
     return {
         "symbol": symbol.upper(),
-        "name": meta.get("longName") or meta.get("shortName") or symbol.upper(),
-        "currency": meta.get("currency", "USD"),
+        "name": dmeta.get("longName") or dmeta.get("shortName") or symbol.upper(),
+        "currency": dmeta.get("currency", "USD"),
         "price": _round(current),
         "prevClose": _round(prev_close),
         "change": _round((current or 0) - (prev_close or 0)),
         "changePct": _round(_pct(current, prev_close)),
-        "dayHigh": _round(meta.get("regularMarketDayHigh")),
-        "dayLow": _round(meta.get("regularMarketDayLow")),
-        "week52High": _round(meta.get("fiftyTwoWeekHigh")),
-        "week52Low": _round(meta.get("fiftyTwoWeekLow")),
-        # 优先用 Yahoo 的 marketState；没有就自己按美东时间算
-        "marketState": meta.get("marketState"),
-        "marketStateLabel": _STATE_LABEL.get(meta.get("marketState")) or us_market_session()[0],
-        "quoteTime": _fmt_quote_time(meta.get("regularMarketTime")),
-        "extended": _extended(meta, current),
+        "dayHigh": _round(dmeta.get("regularMarketDayHigh")),
+        "dayLow": _round(dmeta.get("regularMarketDayLow")),
+        "week52High": _round(dmeta.get("fiftyTwoWeekHigh")),
+        "week52Low": _round(dmeta.get("fiftyTwoWeekLow")),
+        "marketState": dmeta.get("marketState"),
+        "marketStateLabel": state,
+        "quoteTime": _fmt_quote_time(live_t),
+        "extended": None,
     }
 
 
@@ -263,7 +272,7 @@ def build_market_context(symbol):
     qt = f"（行情时间 {q['quoteTime']}）" if q.get("quoteTime") else ""
     lines = [
         f"标的：{q['symbol']}（{q['name']}） 货币：{q['currency']} 市场状态：{state}{qt}",
-        f"常规盘价：{fmt(q['price'])}{'（最新收盘）' if state != '盘中' else '（盘中实时）'}  上一交易日收盘：{fmt(q['prevClose'])}  涨跌：{fmt(q['change'])}（{fmt(q['changePct'],'%')}）",
+        f"现价（{state}）：{fmt(q['price'])}  上一交易日收盘：{fmt(q['prevClose'])}  涨跌：{fmt(q['change'])}（{fmt(q['changePct'],'%')}）",
         f"今日区间：{fmt(q['dayLow'])} ~ {fmt(q['dayHigh'])}   52周区间：{fmt(q['week52Low'])} ~ {fmt(q['week52High'])}",
     ]
     if q.get("extended"):

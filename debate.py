@@ -159,19 +159,62 @@ def _logged_call(session, role, system, user):
     return out
 
 
-def run_debate(topic, ticker):
+# ---------- 分析师多轮对话记忆（仅 ANALYSIS 用；多空辩论保持无状态） ----------
+_CONV = {}                  # conv_id -> [{"role":"user"/"analyst","content":...}, ...]
+_CONV_MAX = 50             # 最多保留多少个会话线程（FIFO 淘汰）
+_CONV_MAX_TURNS = 24       # 单线程最多存多少条
+_HISTORY_MAX_CHARS = 6000  # 喂给分析师的历史上下文最大字符数
+
+
+def _conv_get(conv_id):
+    return _CONV.get(conv_id) if conv_id else None
+
+
+def _conv_append(conv_id, role, content):
+    if not conv_id:
+        return
+    if conv_id not in _CONV:
+        if len(_CONV) >= _CONV_MAX:          # 淘汰最旧的线程
+            _CONV.pop(next(iter(_CONV)))
+        _CONV[conv_id] = []
+    _CONV[conv_id].append({"role": role, "content": content})
+    _CONV[conv_id][:] = _CONV[conv_id][-_CONV_MAX_TURNS:]
+
+
+def _history_text(turns, max_chars=_HISTORY_MAX_CHARS):
+    """把对话历史拼成文本，从最近往前累加，超过上限就丢更早的（保证带最近的上下文）。"""
+    acc, total = [], 0
+    for t in reversed(turns):
+        line = f"{'用户' if t['role'] == 'user' else '分析师'}：{t['content']}"
+        if acc and total + len(line) > max_chars:
+            break
+        acc.append(line)
+        total += len(line)
+    acc.reverse()
+    return "\n".join(acc)
+
+
+_ANALYST_FOLLOWUP_SYS = (
+    "你是一名专业的【证券分析师】，正在和用户进行一段持续的对话。"
+    "请结合下面的【对话历史】自然地继续回答用户的追问，像正常聊天一样，承接上文、不要重复客套。"
+    "涉及数据以【当前行情速览】为准；用中文，markdown，简洁直接，不要编造。"
+    "不要强行给买卖决策——除非用户明确在问决策。"
+)
+
+
+def run_debate(topic, ticker, conv_id=None):
     """生成器：先由 AI 判断议题意图，再路由到对应流程，并把整场记入日志。
 
-    - DECISION → 多空辩论 + 裁判裁决
-    - ANALYSIS → 单个分析师直接回答（同样基于行情+新闻）
-    - CHITCHAT → 礼貌挡回，不查数据、不走流程
+    - DECISION → 多空辩论 + 裁判裁决（无状态，一次性）
+    - ANALYSIS → 分析师回答；首轮基于行情+新闻分析，后续按多轮对话带上下文
+    - CHITCHAT → 礼貌挡回（但若已在分析师对话中，则当作追问继续）
 
     每个 yield 元素形如 {"role","name","avatar","content"} 或 {"error": "..."}。
     无论正常结束还是中途断开，finally 都会落盘日志（logs/）。
     """
     topic = (topic or "").strip()
     ticker = (ticker or "").strip().upper()
-    session = {"topic": topic, "ticker": ticker, "intent": None,
+    session = {"topic": topic, "ticker": ticker, "intent": None, "conv_id": conv_id,
                "context": None, "turns": [], "messages": []}
 
     def emit(ev):
@@ -190,9 +233,48 @@ def run_debate(topic, ticker):
         intent = _parse_intent(raw)
         session["intent"] = intent
 
-        if intent == "CHITCHAT":
+        history_turns = _conv_get(conv_id)
+        in_analyst_chat = bool(history_turns)
+
+        # 闲聊：若已在分析师对话中，当作追问继续；否则礼貌挡回
+        if intent == "CHITCHAT" and not in_analyst_chat:
             yield emit(_event("host", "这看起来不是投资相关的问题哦～ 我专注于帮你分析持仓和个股。"
                                       "试试问「我的 MU 现在该怎么操作？」或「GOOGL 今天为什么跌？」"))
+            return
+
+        # 分析师对话：ANALYSIS 始终走这里；CHITCHAT 但已在对话中也当作追问继续。
+        # （DECISION 即使在对话中也会落到下面的多空辩论，保证决策类永远有辩论）
+        if intent == "ANALYSIS" or (intent == "CHITCHAT" and in_analyst_chat):
+            session["intent"] = "ANALYSIS"
+            if in_analyst_chat:
+                # 后续追问：带对话历史 + 当前行情速览（不再灌完整数据卡）
+                try:
+                    q = market.get_quote(ticker) if ticker else None
+                    quote_line = (f"{q['symbol']} 现价 {q['price']}（{q['marketStateLabel']}）"
+                                  f" 涨跌 {q['changePct']}%") if q else "（无）"
+                except Exception:
+                    quote_line = "（无）"
+                user = (f"【对话历史】\n{_history_text(history_turns)}\n\n"
+                        f"【当前行情速览】{quote_line}\n\n"
+                        f"【用户追问】{topic}\n请承接上文继续回答。")
+                ans = _logged_call(session, "analyst", _ANALYST_FOLLOWUP_SYS, user)
+            else:
+                # 首轮分析：完整数据卡
+                if not ticker:
+                    yield emit({"error": "请先选择或输入一个股票代码（如 MU、GOOGL）。"})
+                    return
+                try:
+                    shared, _mc, pieces = _build_shared(topic, ticker)
+                    session["context"] = pieces
+                except Exception as e:
+                    yield emit({"error": f"获取 {ticker} 行情失败：{e}"})
+                    return
+                ans = _logged_call(session, "analyst", _ANALYST_SYS,
+                                   shared + "\n请作为分析师直接回答上面的议题。")
+            # 记入分析师对话记忆
+            _conv_append(conv_id, "user", topic)
+            _conv_append(conv_id, "analyst", ans)
+            yield emit(_event("analyst", ans))
             return
 
         if not ticker:
@@ -204,13 +286,6 @@ def run_debate(topic, ticker):
             session["context"] = pieces
         except Exception as e:  # 行情拉取失败
             yield emit({"error": f"获取 {ticker} 行情失败：{e}"})
-            return
-
-        # ANALYSIS：分析师直接回答
-        if intent == "ANALYSIS":
-            ans = _logged_call(session, "analyst", _ANALYST_SYS,
-                               shared + "\n请作为分析师直接回答上面的议题。")
-            yield emit(_event("analyst", ans))
             return
 
         # DECISION：多空辩论 + 裁判

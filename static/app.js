@@ -272,6 +272,10 @@ function addTyping() {
   return wrap;
 }
 
+// 当前会话 id（分析师多轮对话靠它带上下文；点「新对话」会换新 id）
+let convId = "c" + Date.now() + Math.random().toString(36).slice(2, 8);
+function resetConv() { convId = "c" + Date.now() + Math.random().toString(36).slice(2, 8); }
+
 let running = false;
 $("#composer").addEventListener("submit", (e) => {
   e.preventDefault();
@@ -284,15 +288,15 @@ $("#composer").addEventListener("submit", (e) => {
   }
   if (!topic) return;
 
-  // 若当前在历史回看视图，先清空回到对话流
-  if ($("#messages").querySelector(".hist-bar, .history-list")) clearMessages();
+  // 若当前在历史回看视图，先清空、并开一个新会话线程
+  if ($("#messages").querySelector(".hist-bar, .history-list")) { clearMessages(); resetConv(); }
   $(".welcome") && $(".welcome").remove();
   addMsg("user", "我", "🧑", topic, false);
   $("#topicInput").value = "";
   running = true; $("#sendBtn").disabled = true;
 
   const typing = addTyping();
-  const url = `/api/debate?topic=${encodeURIComponent(topic)}&ticker=${encodeURIComponent(ticker)}`;
+  const url = `/api/debate?topic=${encodeURIComponent(topic)}&ticker=${encodeURIComponent(ticker)}&conv=${encodeURIComponent(convId)}`;
   const es = new EventSource(url);
   let first = true;
 
@@ -389,6 +393,7 @@ async function openSession(file) {
 }
 
 function newChat() {
+  resetConv();
   $("#messages").innerHTML = `<div class="welcome">
     <p>抛一个议题，🐂多头 与 🐻空头 会辩论，最后 ⚖️组合经理 给你<strong>确定性操作建议</strong>。</p>
     <div class="suggest" id="suggest"></div></div>`;

@@ -160,7 +160,8 @@ class Handler(BaseHTTPRequestHandler):
             if path == "/api/debate":
                 topic = (qs.get("topic", [""])[0]).strip()
                 ticker = (qs.get("ticker", [""])[0]).strip()
-                return self._stream_debate(topic, ticker)
+                conv = (qs.get("conv", [""])[0]).strip()
+                return self._stream_debate(topic, ticker, conv)
             # 否则当静态文件
             return self._serve_static(path)
         except Exception as e:
@@ -193,7 +194,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send_json({"error": str(e)}, 400)
 
     # ---------- SSE 辩论 ----------
-    def _stream_debate(self, topic, ticker):
+    def _stream_debate(self, topic, ticker, conv=""):
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
@@ -207,7 +208,7 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             emit({"type": "start", "topic": topic, "ticker": ticker.upper()})
-            for ev in debate.run_debate(topic, ticker):
+            for ev in debate.run_debate(topic, ticker, conv_id=conv or None):
                 if "error" in ev:
                     emit({"type": "error", "message": ev["error"]})
                 else:
