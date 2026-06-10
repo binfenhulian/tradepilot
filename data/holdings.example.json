@@ -1,0 +1,5 @@
+[
+  { "ticker": "MU", "shares": 50, "cost": 620.0 },
+  { "ticker": "GOOGL", "shares": 100, "cost": 310.0 },
+  { "ticker": "NVDA", "shares": 30, "cost": 180.0 }
+]

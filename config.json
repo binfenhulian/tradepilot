@@ -1,0 +1,41 @@
+{
+  "_comment": "角色只是定位不同；每个角色用哪个模型由 roles 指定，可以三个都用同一个。models 里的 model 字段改成下面 _available_models 里的任一 ID 即可。改完重启 ./run.sh 生效。",
+  "_available_models": {
+    "_查询自己账号实际可用": [
+      "Gemini:   curl -s 'https://generativelanguage.googleapis.com/v1beta/models?key=$GEMINI_API_KEY'",
+      "DeepSeek: curl -s https://api.deepseek.com/models -H 'Authorization: Bearer $DEEPSEEK_API_KEY'"
+    ],
+    "gemini (provider=gemini，截至 2026-06)": {
+      "gemini-3.5-flash": "GA · 快且最聪明，agentic/编码强 —— 默认推荐",
+      "gemini-3.1-pro-preview": "推理优先 · 1M 上下文 · 适合当裁判做复杂判断",
+      "gemini-3-flash-preview": "3 系 flash 预览版",
+      "gemini-3.1-flash-lite": "最省钱的轻量版",
+      "gemini-2.5-pro": "上一代 pro，仍可用",
+      "gemini-2.5-flash": "上一代 flash，仍可用",
+      "gemini-2.5-flash-lite": "上一代轻量版"
+    },
+    "deepseek (provider=deepseek，截至 2026-06)": {
+      "deepseek-v4-flash": "现役 · 快/省，通用 —— 默认推荐",
+      "deepseek-v4-pro": "现役 · 强推理/多步工具/长上下文 · 适合当裁判",
+      "deepseek-chat": "⚠️ 旧名(=v4-flash非思考)，2026-07-24 弃用，勿用新代码",
+      "deepseek-reasoner": "⚠️ 旧名(=v4-flash思考)，2026-07-24 弃用，勿用新代码"
+    }
+  },
+  "models": {
+    "gemini": {
+      "provider": "gemini",
+      "model": "gemini-3.5-flash",
+      "temperature": 0.7
+    },
+    "deepseek": {
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "temperature": 0.7
+    }
+  },
+  "roles": {
+    "bull": "deepseek",
+    "bear": "deepseek",
+    "judge": "deepseek"
+  }
+}

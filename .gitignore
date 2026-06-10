@@ -1,0 +1,18 @@
+# --- secrets：绝不提交 ---
+.env
+
+# --- personal data：本地私有，不发布到公开仓库 ---
+data/holdings.json
+data/profile.json
+
+# --- debate logs：个人分析记录 ---
+logs/
+
+# --- python ---
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# --- os ---
+.DS_Store

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>📈 股票辩论室 · AI 决策辅助</title>
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">📈 股票辩论室 <span class="sub">AI 多空辩论 · 决策辅助（学习用途）</span></div>
+    <div class="keys" id="keyStatus"></div>
+  </header>
+
+  <main class="layout">
+    <!-- 左：持仓看板 -->
+    <aside class="panel portfolio">
+      <div class="panel-head">
+        <h2>📊 我的持仓</h2>
+        <div class="ph-btns">
+          <button class="icon-btn" id="refreshBtn" title="刷新行情">↻</button>
+          <button class="icon-btn" id="collapseBtn" title="折叠/展开持仓">▾</button>
+        </div>
+      </div>
+
+      <div class="pf-collapsed-view" id="pfCollapsed"></div>
+
+      <div class="mkt-bar" id="mktBar"></div>
+
+      <div class="summary" id="summary"></div>
+
+      <div class="holdings" id="holdings"></div>
+
+      <details class="adder">
+        <summary>＋ 添加 / 修改持仓</summary>
+        <form id="addForm" class="add-form">
+          <input name="ticker" placeholder="代码 如 MU" required />
+          <input name="shares" type="number" step="any" placeholder="股数" required />
+          <input name="cost" type="number" step="any" placeholder="成本价" required />
+          <button type="submit">保存</button>
+        </form>
+        <p class="hint">同代码再保存即覆盖（用于修改）。</p>
+      </details>
+
+      <details class="profile-box">
+        <summary>🎯 我的投资偏好</summary>
+        <textarea id="prefText" rows="5" placeholder="例如：中长线、能接受中等波动、单只不超 30% ..."></textarea>
+        <button id="savePref">保存偏好</button>
+        <span class="saved-tip" id="prefTip"></span>
+      </details>
+    </aside>
+
+    <!-- 右：聊天室 -->
+    <section class="panel chat">
+      <div class="chat-head">
+        <h2>💬 辩论室</h2>
+        <div class="participants" id="participants"></div>
+        <button class="icon-btn" id="historyBtn" title="历史辩论">📜</button>
+        <button class="icon-btn" id="roleBtn" title="角色分工">⚙️</button>
+      </div>
+      <div class="role-config hidden" id="roleConfig"></div>
+
+      <div class="messages" id="messages">
+        <div class="welcome">
+          <p>抛一个议题，🐂多头 与 🐻空头 会辩论，最后 ⚖️组合经理 给你<strong>确定性操作建议</strong>。</p>
+          <div class="suggest" id="suggest"></div>
+        </div>
+      </div>
+
+      <form class="composer" id="composer">
+        <select id="tickerSel" title="针对哪只股票"></select>
+        <input id="topicInput" placeholder="例如：我的 MU 现在该怎么操作？" autocomplete="off" />
+        <button type="submit" id="sendBtn">发起辩论</button>
+      </form>
+    </section>
+  </main>
+
+  <script src="/app.js"></script>
+</body>
+</html>
