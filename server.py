@@ -40,7 +40,10 @@ def _portfolio():
         row = {"ticker": h["ticker"], "shares": h["shares"], "cost": h["cost"]}
         try:
             q = market.get_quote(h["ticker"])
-            spark = market.get_sparkline(h["ticker"], rng="3mo")
+            # 当日分时走势优先（开盘后会动）；拿不到则回退到 3 个月日线
+            spark_pts = q.get("intradaySpark")
+            if not spark_pts:
+                spark_pts = market.get_sparkline(h["ticker"], rng="3mo")["points"]
             price = q["price"] or 0
             mv = price * h["shares"]
             cost_val = h["cost"] * h["shares"]
@@ -60,7 +63,7 @@ def _portfolio():
                 "pnl": round(pnl, 2),
                 "pnlPct": round(pnl / cost_val * 100, 2) if cost_val else 0,
                 "dayPnl": round(day_pnl, 2),
-                "spark": spark["points"],
+                "spark": spark_pts,
             })
         except Exception as e:
             row.update({"error": str(e)})

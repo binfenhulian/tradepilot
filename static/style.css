@@ -9,6 +9,9 @@
   --green-bg: rgba(46, 160, 67, 0.12);
   --red: #f85149;
   --red-bg: rgba(248, 81, 73, 0.12);
+  /* 涨/跌专用色（可一键切换：默认绿涨红跌；A股习惯红涨绿跌） */
+  --c-up: #2ea043;
+  --c-down: #f85149;
   --bull: #f0a93b;
   --bear: #4aa3ff;
   --judge: #b08cff;
@@ -62,6 +65,7 @@ body {
 body.pf-collapsed #collapseBtn { transform: rotate(-90deg); }
 body.pf-collapsed .portfolio .mkt-bar,
 body.pf-collapsed .portfolio .summary,
+body.pf-collapsed .portfolio .sort-bar,
 body.pf-collapsed .portfolio .holdings,
 body.pf-collapsed .portfolio .adder,
 body.pf-collapsed .portfolio .profile-box { display: none; }
@@ -104,6 +108,14 @@ body.pf-collapsed .layout { grid-template-columns: 168px 1fr; }
 .sum-card .val { font-size: 17px; font-weight: 700; margin-top: 2px; }
 .sum-card.wide { grid-column: span 2; }
 
+.sort-bar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 0 0 10px; font-size: 12px; color: var(--muted); }
+.sort-bar .sb-btn {
+  background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+  border-radius: 14px; padding: 3px 9px; cursor: pointer; font-size: 12px;
+}
+.sort-bar .sb-btn:hover { border-color: var(--accent); }
+.sort-bar .sb-btn.active { border-color: var(--accent); color: var(--accent); }
+
 .holding {
   display: grid; grid-template-columns: 1fr 64px auto;
   gap: 8px; align-items: center;
@@ -115,11 +127,13 @@ body.pf-collapsed .layout { grid-template-columns: 168px 1fr; }
 .holding .h-main .price { font-size: 12px; margin-top: 2px; }
 .holding .pnl-col { text-align: right; font-size: 12px; }
 .holding .pnl-col .big { font-weight: 700; font-size: 13px; }
+.holding .pnl-col .day-pnl { font-size: 11px; opacity: .85; margin-top: 2px; border-top: 1px dashed var(--border); padding-top: 2px; }
 .holding canvas { display: block; }
 .holding .del { background: none; border: none; color: var(--muted); cursor: pointer; font-size: 14px; }
 .holding .del:hover { color: var(--red); }
-.up { color: var(--green); }
-.down { color: var(--red); }
+.up { color: var(--c-up); }
+.down { color: var(--c-down); }
+body.cn-colors { --c-up: #f85149; --c-down: #2ea043; }  /* 红涨绿跌 */
 .mstate { font-size: 10px; color: var(--muted); border: 1px solid var(--border); border-radius: 10px; padding: 0 6px; margin-left: 4px; }
 .ext-line { color: var(--muted); }
 .ext { font-size: 11px; }

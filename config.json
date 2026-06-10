@@ -41,6 +41,6 @@
   "roles": {
     "bull": "deepseek",
     "bear": "deepseek",
-    "judge": "gemini"
+    "judge": "deepseek-pro"
   }
 }

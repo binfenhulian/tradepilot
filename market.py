@@ -105,6 +105,17 @@ def _macd(values):
     return macd_v, sig_v, macd_v - sig_v
 
 
+def _downsample(values, n=60):
+    """把序列降到约 n 个点（保留最后一个），用于迷你走势图。"""
+    if len(values) <= n:
+        return list(values)
+    step = len(values) / n
+    out = [values[int(i * step)] for i in range(n)]
+    if out[-1] != values[-1]:
+        out.append(values[-1])
+    return out
+
+
 def _pct(a, b):
     if a is None or b in (None, 0):
         return None
@@ -190,24 +201,27 @@ def get_quote(symbol):
     if not dpairs:
         raise ValueError(f"{symbol} 无收盘数据")
 
-    # 现价：分钟级最后一根（含盘前盘后）；失败则回退到 meta / 日线
+    # 现价 + 当日分时走势：取自分钟级 K 线（含盘前盘后）；失败则回退到 meta / 日线
     live_t = dmeta.get("regularMarketTime")
     current = dmeta.get("regularMarketPrice")
+    intraday_spark = None
     try:
         mins = _fetch_chart(symbol, rng="1d", interval="1m", prepost=True, ttl=8)
         mpairs = _clean_closes(mins)
         if mpairs:
             live_t, current = mpairs[-1][0], mpairs[-1][1]
+            intraday_spark = [_round(c) for c in _downsample([c for _, c in mpairs])]
     except Exception:
         pass
     if current is None:
         current = dpairs[-1][1]
 
-    # 上一交易日收盘：用日线序列推算（若最后一根是今天则取前一根）
-    today = datetime.date.today()
+    # 上一交易日收盘：以【美东交易日】判断（不能用本机日期，否则你在北京、跨过午夜后
+    # date.today() 会变成第二天，把"今天这根日线"误当成上一收盘，导致今日涨跌算成≈0）
+    et_today = _to_et(datetime.datetime.utcnow()).date()
     last_t, last_c = dpairs[-1]
-    last_date = datetime.datetime.fromtimestamp(last_t).date()
-    prev_close = dpairs[-2][1] if (last_date == today and len(dpairs) >= 2) else last_c
+    last_et_date = _to_et(datetime.datetime.utcfromtimestamp(last_t)).date()
+    prev_close = dpairs[-2][1] if (last_et_date == et_today and len(dpairs) >= 2) else last_c
 
     state = _STATE_LABEL.get(dmeta.get("marketState")) or us_market_session()[0]
     return {
@@ -225,6 +239,7 @@ def get_quote(symbol):
         "marketState": dmeta.get("marketState"),
         "marketStateLabel": state,
         "quoteTime": _fmt_quote_time(live_t),
+        "intradaySpark": intraday_spark,
         "extended": None,
     }
 

@@ -36,7 +36,8 @@ function drawSpark(canvas, points, up) {
   const y = (v) => h - 2 - ((v - min) / range) * (h - 4);
   ctx.beginPath();
   points.forEach((v, i) => (i ? ctx.lineTo(x(i), y(v)) : ctx.moveTo(x(i), y(v))));
-  ctx.strokeStyle = up ? "#2ea043" : "#f85149";
+  const css = getComputedStyle(document.body);
+  ctx.strokeStyle = (up ? css.getPropertyValue("--c-up") : css.getPropertyValue("--c-down")).trim() || (up ? "#2ea043" : "#f85149");
   ctx.lineWidth = 1.5; ctx.stroke();
 }
 
@@ -94,6 +95,14 @@ async function saveRoles() {
 
 $("#roleBtn").addEventListener("click", () => $("#roleConfig").classList.toggle("hidden"));
 
+// 涨跌颜色一键切换（绿涨红跌 ⇄ 红涨绿跌）
+if (localStorage.getItem("cnColors")) document.body.classList.add("cn-colors");
+$("#colorBtn").addEventListener("click", () => {
+  document.body.classList.toggle("cn-colors");
+  localStorage.setItem("cnColors", document.body.classList.contains("cn-colors") ? "1" : "");
+  renderHoldings(HOLDINGS); // 重绘 sparkline 颜色（文字色靠 CSS 变量自动变）
+});
+
 $("#collapseBtn").addEventListener("click", () => {
   document.body.classList.toggle("pf-collapsed");
   // 记住折叠状态
@@ -108,8 +117,42 @@ async function loadPortfolio() {
   HOLDINGS = data.holdings;
   renderMktBar(data.summary);
   renderSummary(data.summary);
+  renderSortBar();
   renderHoldings(data.holdings);
   renderTickerSelect(data.holdings);
+}
+
+// ---------- 排序 ----------
+let sortKey = localStorage.getItem("sortKey") || "default";
+let sortDir = localStorage.getItem("sortDir") || "desc";
+const _SORT_FIELDS = [["default", "默认"], ["pnl", "持仓收益"], ["dayPnl", "当日盈亏"], ["marketValue", "市值"]];
+
+function renderSortBar() {
+  $("#sortBar").innerHTML = "排序 " + _SORT_FIELDS.map(([k, label]) => {
+    const active = k === sortKey;
+    const arrow = active && k !== "default" ? (sortDir === "desc" ? " ↓" : " ↑") : "";
+    return `<button class="sb-btn ${active ? "active" : ""}" data-k="${k}">${label}${arrow}</button>`;
+  }).join("");
+  $("#sortBar").querySelectorAll(".sb-btn").forEach((b) => b.addEventListener("click", () => {
+    const k = b.dataset.k;
+    if (k === sortKey && k !== "default") sortDir = sortDir === "desc" ? "asc" : "desc";
+    else { sortKey = k; sortDir = "desc"; }
+    localStorage.setItem("sortKey", sortKey);
+    localStorage.setItem("sortDir", sortDir);
+    renderSortBar();
+    renderHoldings(HOLDINGS);
+  }));
+}
+
+function sortedHoldings(list) {
+  if (sortKey === "default") return list;
+  return [...list].sort((a, b) => {
+    const av = a[sortKey], bv = b[sortKey];
+    if (av == null && bv == null) return 0;
+    if (av == null) return 1;       // 行情失败/缺值排最后
+    if (bv == null) return -1;
+    return sortDir === "desc" ? bv - av : av - bv;
+  });
 }
 
 function cls(v) { return v > 0 ? "up" : v < 0 ? "down" : ""; }
@@ -153,7 +196,7 @@ function renderHoldings(list) {
   const box = $("#holdings");
   if (!list.length) { box.innerHTML = `<p class="hint">还没有持仓，下面添加 ↓</p>`; return; }
   box.innerHTML = "";
-  list.forEach((h) => {
+  sortedHoldings(list).forEach((h) => {
     const el = document.createElement("div");
     el.className = "holding";
     if (h.error) {
@@ -169,18 +212,19 @@ function renderHoldings(list) {
         <div class="h-main">
           <div class="tkr">${h.ticker} <span class="${cls(h.changePct)}">${sign(h.changePct)}%</span> ${state}</div>
           <div class="nm">${h.name}</div>
-          <div class="price">$${h.price} · ${h.shares}股 @ ${h.cost}</div>
+          <div class="price">$${h.price} · ${h.shares}股 @ ${h.cost} · 市值 $${h.marketValue.toLocaleString()}</div>
           ${ext ? `<div class="price ext-line">${ext}</div>` : ""}
         </div>
         <div class="pnl-col">
           <canvas></canvas>
           <div class="big ${cls(h.pnl)}">${sign(h.pnl)}</div>
           <div class="${cls(h.pnlPct)}">${sign(h.pnlPct)}%</div>
+          <div class="day-pnl ${cls(h.dayPnl)}">今 ${sign(h.dayPnl)}</div>
         </div>
         <button class="del" data-t="${h.ticker}" title="删除">✕</button>`;
     }
     box.appendChild(el);
-    if (!h.error) drawSpark(el.querySelector("canvas"), h.spark, h.pnl >= 0);
+    if (!h.error) drawSpark(el.querySelector("canvas"), h.spark, h.changePct >= 0);
   });
   box.querySelectorAll(".del").forEach((b) =>
     b.addEventListener("click", () => delHolding(b.dataset.t)));
